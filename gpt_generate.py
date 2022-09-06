@@ -5,15 +5,15 @@ import gpt_generate_tests as tests
 
 @torch.no_grad()
 def greedy_search(
-    model, input_ids, max_new_tokens: int  # GPT2LMHeadModel  # Tensor(1, seq_len)
+    model,  # GPT2LMHeadModel
+    input_ids,  # Tensor(batch_size, seq_len)
+    max_new_tokens: int,
 ):
     for _ in range(max_new_tokens):
         logits = model(input_ids).logits
         next_token_logits = logits[:, -1, :]
-        most_likely_token = next_token_logits.argmax()
-        input_ids = torch.cat(
-            (input_ids, torch.tensor([most_likely_token]).unsqueeze(0)), dim=-1
-        )
+        most_likely_token = next_token_logits.argmax(dim=-1)
+        input_ids = torch.cat((input_ids, most_likely_token.unsqueeze(-1)), dim=-1)
     return input_ids
 
 
@@ -51,7 +51,9 @@ def beam_search(
 
 @torch.no_grad()
 def sample(
-    model, input_ids, max_new_tokens: int  # GPT2LMHeadModel  # Tensor(1, seq_len)
+    model,  # GPT2LMHeadModel
+    input_ids,  # Tensor(batch_size, seq_len)
+    max_new_tokens: int,
 ):
     for _ in range(max_new_tokens):
         logits = model(input_ids).logits
@@ -65,13 +67,13 @@ def sample(
 @torch.no_grad()
 def sample_temperature(
     model,  # GPT2LMHeadModel
-    input_ids,  # Tensor(1, seq_len)
+    input_ids,  # Tensor(batch_size, seq_len)
     max_new_tokens: int,
     temperature: float,
 ):
     for _ in range(max_new_tokens):
         logits = model(input_ids).logits
-        next_token_logits = logits[:, -1, :] / temperature  # this is only change...
+        next_token_logits = logits[:, -1, :] / temperature
         next_token_probs = F.softmax(next_token_logits, dim=-1)
         idx = torch.multinomial(next_token_probs, num_samples=1)
         input_ids = torch.cat((input_ids, idx), dim=-1)
@@ -88,7 +90,7 @@ def top_k_logits(logits, k):
 @torch.no_grad()
 def sample_top_k(
     model,  # GPT2LMHeadModel
-    input_ids,  # Tensor(1, seq_len)
+    input_ids,  # Tensor(batch_size, seq_len)
     max_new_tokens: int,
     top_k: int,
 ):
@@ -109,18 +111,18 @@ def top_p_logits(logits, p):
     sorted_indices_to_remove = cumulative_probs >= p
     sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
     sorted_indices_to_remove[..., 0] = 0
-
-    remove_indices = sorted_indices[sorted_indices_to_remove]
+    indices_to_remove = torch.zeros_like(logits, dtype=torch.bool).scatter_(
+        dim=-1, index=sorted_indices, src=sorted_indices_to_remove
+    )
     out = logits.clone()
-    for idx in remove_indices:
-        out[:, idx] = -float("inf")
+    out[indices_to_remove] = -float("inf")
     return out
 
 
 @torch.no_grad()
 def sample_top_p(
     model,  # GPT2LMHeadModel
-    input_ids,  # Tensor(1, seq_len)
+    input_ids,  # Tensor(batch_size, seq_len)
     max_new_tokens: int,
     top_p: float,
 ):
