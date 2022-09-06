@@ -12,8 +12,8 @@ def greedy_search(
     for _ in range(max_new_tokens):
         logits = model(input_ids).logits
         next_token_logits = logits[:, -1, :]
-        most_likely_token = next_token_logits.argmax(dim=-1)
-        input_ids = torch.cat((input_ids, most_likely_token.unsqueeze(-1)), dim=-1)
+        next_tokens = next_token_logits.argmax(dim=-1)
+        input_ids = torch.cat([input_ids, next_tokens.unsqueeze(-1)], dim=-1)
     return input_ids
 
 
@@ -59,8 +59,8 @@ def sample(
         logits = model(input_ids).logits
         next_token_logits = logits[:, -1, :]
         next_token_probs = F.softmax(next_token_logits, dim=-1)
-        idx = torch.multinomial(next_token_probs, num_samples=1)
-        input_ids = torch.cat((input_ids, idx), dim=-1)
+        next_tokens = torch.multinomial(next_token_probs, num_samples=1)
+        input_ids = torch.cat((input_ids, next_tokens), dim=-1)
     return input_ids
 
 
@@ -75,16 +75,15 @@ def sample_temperature(
         logits = model(input_ids).logits
         next_token_logits = logits[:, -1, :] / temperature
         next_token_probs = F.softmax(next_token_logits, dim=-1)
-        idx = torch.multinomial(next_token_probs, num_samples=1)
-        input_ids = torch.cat((input_ids, idx), dim=-1)
+        next_tokens = torch.multinomial(next_token_probs, num_samples=1)
+        input_ids = torch.cat((input_ids, next_tokens), dim=-1)
     return input_ids
 
 
 def top_k_logits(logits, k):
-    v, ix = torch.topk(logits, k)
-    out = logits.clone()
-    out[out < v[:, [-1]]] = -float("Inf")
-    return out
+    v, _ = torch.topk(logits, k)
+    logits[logits < v[:, [-1]]] = -float("Inf")
+    return logits
 
 
 @torch.no_grad()
@@ -99,8 +98,8 @@ def sample_top_k(
         next_token_logits = logits[:, -1, :]
         filtered_next_token_logits = top_k_logits(next_token_logits, top_k)
         filtered_next_token_probs = F.softmax(filtered_next_token_logits, dim=-1)
-        idx = torch.multinomial(filtered_next_token_probs, num_samples=1)
-        input_ids = torch.cat((input_ids, idx), dim=-1)
+        next_tokens = torch.multinomial(filtered_next_token_probs, num_samples=1)
+        input_ids = torch.cat((input_ids, next_tokens), dim=-1)
     return input_ids
 
 
@@ -114,9 +113,8 @@ def top_p_logits(logits, p):
     indices_to_remove = torch.zeros_like(logits, dtype=torch.bool).scatter_(
         dim=-1, index=sorted_indices, src=sorted_indices_to_remove
     )
-    out = logits.clone()
-    out[indices_to_remove] = -float("inf")
-    return out
+    logits[indices_to_remove] = -float("inf")
+    return logits
 
 
 @torch.no_grad()
@@ -131,8 +129,8 @@ def sample_top_p(
         next_token_logits = logits[:, -1, :]
         filtered_next_token_logits = top_p_logits(next_token_logits, top_p)
         filtered_next_token_probs = F.softmax(filtered_next_token_logits, dim=-1)
-        idx = torch.multinomial(filtered_next_token_probs, num_samples=1)
-        input_ids = torch.cat((input_ids, idx), dim=-1)
+        next_tokens = torch.multinomial(filtered_next_token_probs, num_samples=1)
+        input_ids = torch.cat((input_ids, next_tokens), dim=-1)
     return input_ids
 
 
